@@ -1,18 +1,34 @@
 import { Address, Asset, xdr } from "stellar-sdk";
 import { config } from "./config/env.ts";
 import { Api } from "stellar-sdk/rpc";
+import { Settings } from "./utils/settings-types.ts";
+import { readFromJsonFile } from "./utils/io.ts";
+import { LocalSigner } from "@colibri/core";
+import chalk from "chalk";
 
-const { rpc, receiverKeys, network } = config;
+const { rpc, network, ioConfig } = config;
 
 // Get the native XLM contract ID for testnet
 const contractId = Asset.native().contractId(network);
 
+const settings = await readFromJsonFile<Settings>(ioConfig.settings);
+
+const gAccountSigner = LocalSigner.fromSecret(settings.gAccountSecretKey);
+const mAccountSigner = LocalSigner.fromSecret(settings.mAccountSecretKey);
+const smartWalletContractId = settings.smartWalletContractId;
+
 // The address we want to monitor for incoming payments
-const monitoredAddress = new Address(receiverKeys.publicKey());
+const monitoredAddresses = [
+  new Address(gAccountSigner.publicKey()),
+  new Address(mAccountSigner.publicKey()),
+  new Address(smartWalletContractId),
+];
 
 // Paging state for event polling (similar to useSubscription hook)
 let lastLedgerStart: number | undefined;
 let pagingToken: string | undefined;
+
+const eventsChecked: string[] = [];
 
 async function pollForTransfers() {
   // Set starting ledger if not set (get the latest ledger as starting point)
@@ -33,12 +49,7 @@ async function pollForTransfers() {
         // Using wildcards (*) to match any sender and asset
         // Event structure: ["transfer", fromAddress, toAddress, assetName]
         topics: [
-          [
-            xdr.ScVal.scvSymbol("transfer").toXDR("base64"),
-            "*",
-            monitoredAddress.toScVal().toXDR("base64"), // G address of the receiver account
-            "*",
-          ],
+          [xdr.ScVal.scvSymbol("transfer").toXDR("base64"), "*", "*", "*"],
         ],
         type: "contract",
       },
@@ -56,7 +67,7 @@ async function pollForTransfers() {
   if (response.events) {
     response.events.forEach((event) => {
       try {
-        parseEvent(event);
+        if (!eventsChecked.includes(event.id)) parseEvent(event);
       } catch (error) {
         console.error("Error processing event:", error);
       } finally {
@@ -72,18 +83,24 @@ async function pollForTransfers() {
 
 const parseEvent = (event: Api.EventResponse) => {
   const topics = event.topic;
-  console.log(`Processing event: ${event.txHash} at ledger ${event.ledger}`);
+  console.log(
+    chalk.gray(`Processing event: ${event.txHash} at ledger ${event.ledger}`)
+  );
+  eventsChecked.push(event.id);
   if (topics && topics.length >= 3) {
     // Extract recipient address from event topics
     const toAddress = Address.fromScAddress(topics[2].address()).toString();
 
     // Check if the payment is to our monitored address
-    if (toAddress === monitoredAddress.toString()) {
-      console.log("\nPAYMENT RECEIVED!");
+    if (monitoredAddresses.some((addr) => toAddress === addr.toString())) {
+      console.log(chalk.blue("\nPAYMENT RECEIVED!"));
       console.log(`  Transaction: ${event.txHash}`);
       console.log(`  Ledger: ${event.ledger}`);
       console.log(
         `  Sender: ${Address.fromScAddress(topics[1].address()).toString()}`
+      );
+      console.log(
+        `  Receiver: ${Address.fromScAddress(topics[2].address()).toString()}`
       );
 
       const isMuxed = event.value.switch().name === xdr.ScValType.scvMap().name;
@@ -114,5 +131,9 @@ const parseEvent = (event: Api.EventResponse) => {
 };
 
 // Start monitoring for payment events
-console.log(`Starting payment monitor for: ${monitoredAddress}`);
+console.log(
+  `Starting payment monitor for: ${monitoredAddresses
+    .map((addr) => addr.toString())
+    .join(", ")}`
+);
 pollForTransfers();

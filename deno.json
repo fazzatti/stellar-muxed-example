@@ -1,8 +1,7 @@
 {
   "tasks": {
-    "dev": "deno run --allow-env --allow-net --allow-read --allow-write --allow-ffi --env src/main.ts",
-    "send:muxed": "deno run --allow-env --allow-net --allow-read --allow-write --allow-ffi --env src/send-payment.ts muxed",
-    "send:native": "deno run --allow-env --allow-net --allow-read --allow-write --allow-ffi --env src/send-payment.ts native",
+    "setup": "deno run --allow-env --allow-net --allow-read --allow-write --allow-ffi --env src/setup.ts",
+    "send": "deno run --allow-env --allow-net --allow-read --allow-write --allow-ffi --env src/send.ts",
     "ingest": "deno run --allow-env --allow-net --allow-read --allow-write --allow-ffi --env src/ingest-events.ts"
   },
   "compilerOptions": {
@@ -12,7 +11,9 @@
   "nodeModulesDir": "auto",
   "imports": {
     "@stellar/stellar-sdk": "npm:@stellar/stellar-sdk@^14.0.0",
+    "chalk": "npm:chalk@^5.6.2",
     "stellar-sdk": "npm:@stellar/stellar-sdk@^14.0.0",
+    "@colibri/core": "jsr:@colibri/core@^0.6.0",
     "buffer": "npm:buffer@^6.0.3"
   }
 }

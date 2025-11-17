@@ -1,4 +1,11 @@
-import { Asset, Keypair, Networks } from "@stellar/stellar-sdk";
+import { Asset, Networks } from "@stellar/stellar-sdk";
+import {
+  ContractId,
+  FutureNet,
+  MainNet,
+  NetworkConfig,
+  TestNet,
+} from "@colibri/core";
 import { Server } from "stellar-sdk/rpc";
 
 export function getRequiredEnv(key: string): string {
@@ -34,30 +41,37 @@ if (!(networkKey in Networks)) {
 
 export const stellarNetwork = Networks[networkKey as keyof typeof Networks];
 
+let networkConfig: NetworkConfig;
+
+switch (stellarNetwork) {
+  case Networks.PUBLIC:
+    networkConfig = MainNet();
+    break;
+  case Networks.TESTNET:
+    networkConfig = TestNet();
+    break;
+  case Networks.FUTURENET:
+    networkConfig = FutureNet();
+    break;
+  default:
+    throw new Error(
+      `Network configuration not defined for network: ${stellarNetwork}`
+    );
+}
+
 export const getRpc = () => {
   return new Server(getRequiredEnv("STELLAR_RPC_URL"), { allowHttp: true });
 };
 
 export const config = {
   network: stellarNetwork,
-  senderKeys: Keypair.fromSecret(getRequiredEnv("SENDER_SECRET_KEY")),
-  receiverKeys: Keypair.fromSecret(getRequiredEnv("RECEIVER_SECRET_KEY")),
-  memoId: getRequiredEnv("MEMO_ID"),
+  networkConfig: networkConfig,
+  receiverMemoId: getRequiredEnv("RECEIVER_MEMO_ID"),
+  assetContractId: Asset.native().contractId(stellarNetwork) as ContractId,
   rpc: getRpc(),
-};
-
-export const getFriendbotUrl = () => {
-  switch (stellarNetwork) {
-    case Networks.TESTNET:
-      return "https://friendbot.stellar.org";
-    case Networks.FUTURENET:
-      return "https://friendbot-futurenet.stellar.org";
-    case Networks.PUBLIC:
-    case Networks.SANDBOX:
-    case Networks.STANDALONE:
-    default:
-      throw new Error(
-        `Friendbot is not defined for the ${stellarNetwork} network.`
-      );
-  }
+  wasmDir: "./target/wasm32v1-none/release/",
+  ioConfig: {
+    outputDirectory: "./.json",
+    settings: "settings",
+  },
 };
